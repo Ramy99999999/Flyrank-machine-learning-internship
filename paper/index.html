@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Predicting Content Risk: A Decision-Support Model for Prioritizing Pages That May Go Dark</title>
+<meta name="description" content="FlyRank ML Internship capstone: ranking content items by risk of going dark in the following month, with an honest baseline comparison.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<nav aria-label="Paper sections"><ul>
+<li><a href="#abstract">Abstract</a></li><li><a href="#introduction">Introduction</a></li><li><a href="#data">Data</a></li><li><a href="#methodology">Methodology</a></li><li><a href="#results">Results</a></li><li><a href="#limitations">Limitations</a></li><li><a href="#recommendations">Recommendations</a></li><li><a href="#reproducibility">Reproducibility</a></li><li><a href="#acknowledgments">Acknowledgments</a></li>
+</ul></nav>
+
+<header class="hero"><div class="wrap">
+<p class="kicker">FlyRank ML Internship — Capstone</p>
+<h1>Predicting Content Risk: A Decision-Support Model for Prioritizing Pages That May Go Dark</h1>
+<p class="sub">A ranked-review-queue experiment: can February 2026 signals help a content team decide which pages to look at first for March 2026? Reported honestly, including where a simple baseline did better.</p>
+<div class="metrics" role="list">
+<div class="metric" role="listitem"><b>29,362</b><span>modeling items</span></div>
+<div class="metric" role="listitem"><b>3.95%</b><span>positive rate (went dark)</span></div>
+<div class="metric" role="listitem"><b>23,489</b><span>training rows</span></div>
+<div class="metric" role="listitem"><b>5,873</b><span>test rows</span></div>
+</div>
+<p class="flow">Research → Data → Method → Evidence → Recommendation</p>
+</div></header>
+
+<main id="main" class="wrap">
+
+<section id="abstract" aria-labelledby="h-abs">
+<h2 id="h-abs"><span class="n">1</span>Abstract</h2>
+<div class="abstract"><p>This study asks whether content items can be ranked by their risk of going dark in the following month, so that a content team can decide which pages to review first. Using the FlyRank pseudonymized warehouse release, we use February 2026 search and engagement signals to predict a March 2026 outcome for 29,362 content items (14 columns), of which 1,159 (about 3.95%) went dark. We train a Logistic Regression model with median imputation and standardization and compare it with an inverse-log-impressions baseline, 1 / log1p(gsc_impressions_feb), using a stratified, deterministically ordered split (23,489 train and 5,873 test rows, random_state=42) and Precision@K on held-out data. On the held-out test set the two methods matched at Precision@10 (0.10 each), while the baseline outperformed Logistic Regression at Precision@20 (0.20 vs 0.05) and Precision@50 (0.16 vs 0.10). In this experiment, therefore, the simple baseline is the stronger ranking benchmark, and the scores are best used directionally as decision-support for a human-reviewed queue rather than as evidence that the model adds value.</p></div>
+</section>
+
+<section id="introduction" aria-labelledby="h-intro">
+<h2 id="h-intro"><span class="n">2</span>Introduction / Problem Statement</h2>
+<div class="prose">
+<p>A content team cannot review every page equally. The practical goal is a <strong>ranked queue</strong> that helps prioritize which content items deserve review first, based on their estimated risk of going dark in the following month.</p>
+<p><strong>Research question:</strong> <em>Can we rank content items by their risk of going dark in the following month, so that a content team can prioritize which pages to review first?</em></p>
+</div>
+<div class="grid">
+<div class="card ok"><h3>What this is</h3><p>A prioritization tool and decision-support system. A high score means “review this item earlier.”</p></div>
+<div class="card warn"><h3>What this is not</h3><p>Not an automated decision to delete, rewrite, or refresh content. Not a claim that a page will definitely fail, that refreshing improves traffic, that any causal effect exists, or that the model explains Google’s ranking factors.</p></div>
+</div>
+</section>
+
+<section id="data" aria-labelledby="h-data">
+<h2 id="h-data"><span class="n">3</span>Data</h2>
+<div class="prose">
+<p>The data come from the <strong>FlyRank Internship — Pseudonymized Warehouse Release (v20260703)</strong>. The main source is <code>fact_content_daily_performance</code>, with dimensions <code>dim_content</code> and <code>dim_clients</code>. The grain is <code>report_date × client_hash_id × content_hash_id</code>. February 2026 is the feature window and March 2026 is the outcome window. The latest <code>_sample</code> partition is sealed and excluded from model development and evaluation.</p>
+</div>
+<h3>Modeling dataset and outcome</h3>
+<div class="prose">
+<p>The final modeling dataset has <strong>29,362 rows × 14 columns</strong>. The outcome <code>went_dark</code> equals 1 when March has measured GSC activity (<code>gsc_measured_days_mar &gt; 0</code>) and total March GSC clicks are zero; otherwise it is 0 under this modeling definition.</p>
+</div>
+<h3>Universe filters (eligibility rules)</h3>
+<ul class="prose">
+<li>February GSC impressions ≥ 100</li>
+<li>February GSC clicks ≥ 3</li>
+<li>Content is published and was created on or before 2026-02-28</li>
+<li>Deleted content excluded (<code>is_deleted = FALSE</code>)</li>
+</ul>
+<div class="grid">
+<div class="card"><span class="tag">Observed</span><h3>Rare outcome</h3><p>1,159 of 29,362 items went dark (~3.95%; 0.03947278795722362).</p></div>
+<div class="card warn"><span class="tag w">Observed</span><h3>Missing engagement data</h3><p><code>sessions_organic_feb</code>: 20,335 missing.<br><code>scroll_events_feb</code>: 20,335 missing.<br>GSC fields: no missing values. Missing GA4 data is <strong>not</strong> interpreted as zero.</p></div>
+</div>
+<figure>
+<svg viewBox="0 0 640 170" role="img" aria-labelledby="oc-t oc-d">
+<title id="oc-t">Outcome distribution</title>
+<desc id="oc-d">1,159 items went dark and 28,203 did not, a positive rate of about 3.95 percent. The bar is drawn to a linear scale from zero to 100 percent.</desc>
+<text x="20" y="28" font-family="system-ui,sans-serif" font-size="16" font-weight="700" fill="#14202b">Outcome Distribution (share of 29,362 items)</text>
+<rect x="20" y="50" width="600" height="40" fill="#dbe4ea" stroke="#14202b"/>
+<rect x="20" y="50" width="23.7" height="40" fill="#b3261e"/>
+<line x1="31.9" y1="90" x2="31.9" y2="108" stroke="#14202b"/>
+<text x="31.9" y="124" font-family="system-ui,sans-serif" font-size="13" fill="#14202b" text-anchor="start">Went dark: 1,159 (≈3.95%)</text>
+<text x="620" y="124" font-family="system-ui,sans-serif" font-size="13" fill="#14202b" text-anchor="end">Did not go dark: 28,203 (≈96.05%)</text>
+<text x="20" y="150" font-family="system-ui,sans-serif" font-size="12" fill="#4a5866">Linear scale, 0% to 100%. Red segment = went dark.</text>
+</svg>
+<figcaption>Figure 1. Outcome distribution. The scale is linear and starts at zero, so the small positive class is shown at its true proportion.</figcaption>
+</figure>
+<div class="tablewrap"><table>
+<caption>Outcome counts</caption>
+<thead><tr><th>Outcome</th><th class="num">Items</th></tr></thead>
+<tbody><tr><td><code>went_dark = 0</code></td><td class="num">28,203</td></tr><tr><td><code>went_dark = 1</code></td><td class="num">1,159</td></tr></tbody></table></div>
+<h3>Data quality checks</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Check</th><th class="num">Result</th></tr></thead>
+<tbody>
+<tr><td>Duplicate client/content pairs</td><td class="num">0</td></tr>
+<tr><td>Invalid or negative impressions</td><td class="num">0</td></tr>
+<tr><td>Invalid or negative clicks</td><td class="num">0</td></tr>
+<tr><td>Invalid average positions</td><td class="num">0</td></tr>
+<tr><td>Impressions &lt; 100 after filtering</td><td class="num">0</td></tr>
+<tr><td>Clicks &lt; 3 after filtering</td><td class="num">0</td></tr>
+</tbody></table></div>
+<p class="prose">No client names, domains, private queries, credentials, or raw exports appear on this page.</p>
+</section>
+
+<section id="methodology" aria-labelledby="h-meth">
+<h2 id="h-meth"><span class="n">4</span>Methodology</h2>
+<h3>Features</h3>
+<div class="prose">
+<p>Five February 2026 features: <code>gsc_impressions_feb</code>, <code>gsc_clicks_feb</code>, <code>avg_position_feb</code>, <code>sessions_organic_feb</code>, <code>scroll_events_feb</code>. Missingness indicators are added for <code>sessions_organic_feb</code> and <code>scroll_events_feb</code>. <code>client_hash_id</code> and <code>content_hash_id</code> are used only for grouping, ordering, and splitting; they are <strong>not</strong> model features.</p>
+</div>
+<h3>Baseline</h3>
+<pre><code>1 / np.log1p(gsc_impressions_feb)</code></pre>
+<p class="prose">A simple heuristic that ranks lower-impression content higher. It is intentionally simple and serves as a benchmark for whether the machine-learning model adds value.</p>
+<h3>Model</h3>
+<p class="prose">Logistic Regression in a pipeline: (1) median imputation, (2) <code>StandardScaler</code>, (3) <code>LogisticRegression</code> with <code>max_iter=1000</code>, <code>random_state=42</code>, <code>class_weight="balanced"</code>.</p>
+<h3>Train/test split</h3>
+<div class="prose"><p>The split is stratified with <code>random_state=42</code>. Before splitting, rows are sorted deterministically so the underlying Parquet/DuckDB row order cannot influence the result:</p></div>
+<pre><code>modeling_df = modeling_df.sort_values(
+    ["client_hash_id", "content_hash_id"]
+).reset_index(drop=True)</code></pre>
+<div class="tablewrap"><table>
+<thead><tr><th>Split</th><th class="num">Rows</th><th class="num">Positive rate (approx.)</th></tr></thead>
+<tbody><tr><td>Training</td><td class="num">23,489</td><td class="num">0.0394653</td></tr><tr><td>Test (held-out)</td><td class="num">5,873</td><td class="num">0.0395028</td></tr></tbody></table></div>
+<h3>Leakage prevention</h3>
+<ul class="prose">
+<li>February features predict a March outcome; the target comes from the later window.</li>
+<li>No March outcome information is used as a feature.</li>
+<li>IDs are not features.</li>
+<li>The latest <code>_sample</code> partition is excluded from development and evaluation.</li>
+<li>Evaluation uses held-out data.</li>
+</ul>
+<p class="prose">The workflow includes explicit leakage checks and time-separated feature and outcome windows. This page does not claim that every possible form of leakage has been ruled out.</p>
+<h3>Evaluation metric</h3>
+<p class="prose"><strong>Precision@K</strong> asks: among the top K items ranked as highest risk, how many actually went dark?</p>
+<pre><code>Precision@K = (true positives in the top K) / K</code></pre>
+</section>
+
+<section id="results" aria-labelledby="h-res">
+<h2 id="h-res"><span class="n">5</span>Results</h2>
+<div class="card ok callout"><p><strong>Key finding:</strong> The simple inverse-log-impressions baseline matched Logistic Regression at Precision@10 and outperformed it at Precision@20 and Precision@50 on the held-out test set.</p></div>
+<div class="grid">
+<div class="card ok"><span class="tag">Observed</span><h3>Matched at the top 10</h3><p>Precision@10: 0.10 for both methods.</p></div>
+<div class="card warn"><span class="tag w">Observed</span><h3>Baseline wins at K=20 and K=50</h3><p>Precision@20: 0.20 baseline vs 0.05 Logistic Regression.</p><p>Precision@50: 0.16 baseline vs 0.10 Logistic Regression.</p></div>
+<div class="card"><span class="tag">Observed</span><h3>Rare outcome</h3><p>1,159 of 29,362 items went dark (~3.95%).</p></div>
+</div>
+<figure>
+<svg viewBox="0 0 640 330" role="img" aria-labelledby="pk-t pk-d" font-family="system-ui,sans-serif">
+<title id="pk-t">Held-Out Precision@K: Baseline vs Logistic Regression</title>
+<desc id="pk-d">Grouped bar chart. At K=10 both are 0.10. At K=20 baseline is 0.20 and Logistic Regression 0.05. At K=50 baseline is 0.16 and Logistic Regression 0.10.</desc>
+<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fff"/><rect width="3" height="6" fill="#0f5c78"/></pattern></defs>
+<text x="320" y="22" text-anchor="middle" font-size="16" font-weight="700" fill="#14202b">Held-Out Precision@K: Baseline vs Logistic Regression</text>
+<g stroke="#d9dfe6"><line x1="70" x2="620" y1="250" y2="250" stroke="#14202b"/><line x1="70" x2="620" y1="206" y2="206"/><line x1="70" x2="620" y1="162" y2="162"/><line x1="70" x2="620" y1="118" y2="118"/><line x1="70" x2="620" y1="74" y2="74"/><line x1="70" x2="620" y1="30" y2="30" stroke="none"/></g>
+<g font-size="12" fill="#4a5866" text-anchor="end"><text x="62" y="254">0.00</text><text x="62" y="210">0.05</text><text x="62" y="166">0.10</text><text x="62" y="122">0.15</text><text x="62" y="78">0.20</text></g>
+<text transform="rotate(-90 16 150)" x="16" y="150" text-anchor="middle" font-size="13" fill="#14202b">Precision</text>
+<g fill="#14202b" stroke="#14202b">
+<rect x="145" y="162" width="50" height="88"/><rect x="205" y="162" width="50" height="88" fill="url(#hatch)" stroke="#0f5c78"/>
+<rect x="320" y="74" width="50" height="176"/><rect x="380" y="206" width="50" height="44" fill="url(#hatch)" stroke="#0f5c78"/>
+<rect x="495" y="109" width="50" height="141"/><rect x="555" y="162" width="50" height="88" fill="url(#hatch)" stroke="#0f5c78"/>
+</g>
+<g font-size="13" font-weight="700" fill="#14202b" text-anchor="middle" stroke="none"><text x="170" y="155">0.10</text><text x="230" y="155">0.10</text><text x="345" y="67">0.20</text><text x="405" y="199">0.05</text><text x="520" y="102">0.16</text><text x="580" y="155">0.10</text></g>
+<g font-size="13" fill="#14202b" text-anchor="middle"><text x="200" y="272">K=10</text><text x="375" y="272">K=20</text><text x="550" y="272">K=50</text><text x="345" y="294" font-weight="600">Top-K</text></g>
+<rect x="215" y="308" width="14" height="14" fill="#14202b"/><text x="236" y="320" font-size="13" fill="#14202b">Baseline</text>
+<rect x="330" y="308" width="14" height="14" fill="url(#hatch)" stroke="#0f5c78"/><text x="351" y="320" font-size="13" fill="#14202b">Logistic Regression</text>
+</svg>
+<figcaption>Figure 2. Held-out Precision@K. Solid bars = baseline; hatched bars = Logistic Regression. Values are labeled on each bar.</figcaption>
+</figure>
+<div class="tablewrap"><table>
+<caption>Comparison on the held-out test set</caption>
+<thead><tr><th>Metric</th><th class="num">Baseline</th><th class="num">Logistic Regression</th></tr></thead>
+<tbody>
+<tr><td>Precision@10</td><td class="num">0.10</td><td class="num">0.10</td></tr>
+<tr class="lose"><td>Precision@20</td><td class="num">0.20</td><td class="num">0.05</td></tr>
+<tr class="lose"><td>Precision@50</td><td class="num">0.16</td><td class="num">0.10</td></tr>
+</tbody></table></div>
+<h3>Interpretation</h3>
+<div class="prose">
+<p>The Logistic Regression model did not outperform the simple inverse-log-impressions baseline on the held-out ranking evaluation. At the top 10 the methods matched. At the top 20 and top 50 the baseline scored higher. For this experiment, the simple baseline provides a stronger ranking benchmark than Logistic Regression at K=20 and K=50, and this experiment does not demonstrate that Logistic Regression improves ranking quality over the baseline. This is a valid research result and is reported as such.</p>
+</div>
+</section>
+
+<section id="limitations" aria-labelledby="h-lim">
+<h2 id="h-lim"><span class="n">6</span>Limitations &amp; Honest Framing</h2>
+<div class="grid">
+<div class="card ok"><span class="tag">Observed</span><h3>Directly observed</h3><ul><li>Held-out Precision@K results</li><li>The baseline vs Logistic Regression difference</li><li>The ~3.95% outcome rate</li><li>Missingness in GA4-derived fields</li><li>The data-quality check results</li></ul></div>
+<div class="card"><span class="tag">Directional</span><h3>Directional use</h3><p>Scores can be used directionally to prioritize review.</p></div>
+<div class="card"><span class="tag">Decision-support</span><h3>Decision-support</h3><p>The ranking can support a content team’s review queue, with humans making the decisions.</p></div>
+<div class="card warn"><span class="tag w">Not established</span><h3>Not established</h3><ul><li>Causality</li><li>That refreshing content increases traffic</li><li>That a page will definitely go dark</li><li>That the model explains Google’s ranking algorithm</li><li>That the model generalizes to every future period</li><li>That Logistic Regression is better than the baseline</li></ul></div>
+</div>
+<h3>Additional caveats</h3>
+<ul class="prose">
+<li>The positive class is rare (~3.95%), so Precision@K at small K rests on few positive cases.</li>
+<li>GA4-derived fields have substantial missingness (20,335 rows each).</li>
+<li>The experiment covers one specific feature/outcome window and one held-out evaluation.</li>
+<li>The model is intentionally simple.</li>
+<li>More future validation is needed before operational deployment.</li>
+<li>Because the baseline outperformed the ML model, additional feature and model work may be necessary.</li>
+</ul>
+</section>
+
+<section id="recommendations" aria-labelledby="h-rec">
+<h2 id="h-rec"><span class="n">7</span>Ranked Recommendations</h2>
+<p class="prose">A review playbook, in priority order. It does not assert causal reasons for any outcome.</p>
+<ol class="priority">
+<li><strong>Review the highest-ranked items first.</strong> Use the ranking as a triage queue: top-ranked content gets earlier human review. The score is a prioritization signal, not an automatic action.</li>
+<li><strong>Inspect low-impression / low-visibility content.</strong> Because the baseline ranked lower-impression content more highly and performed strongly in this experiment, impression volume is a useful signal for prioritization in this particular evaluation. When reviewing, consider relevance, freshness, content quality, search-intent alignment, and whether the page is still strategically useful. These factors are review prompts, not established causes.</li>
+<li><strong>Investigate missing engagement data.</strong> <code>sessions_organic_feb</code> and <code>scroll_events_feb</code> are each missing for 20,335 rows. Missingness should not be read as zero engagement; where possible, check data coverage before using these signals operationally.</li>
+<li><strong>Keep a human review step.</strong> Do not automatically rewrite, delete, merge, or prune content based solely on the score. The score determines review priority only.</li>
+<li><strong>Validate the next model before deployment.</strong> Since Logistic Regression did not beat the baseline at K=20 or K=50, future work can test whether feature engineering, model selection, calibration, or additional time windows add genuine value. A more complex model is not guaranteed to perform better.</li>
+</ol>
+</section>
+
+<section id="reproducibility" aria-labelledby="h-rep">
+<h2 id="h-rep"><span class="n">8</span>Reproducibility</h2>
+<p class="prose">The work is reproducible from the project repository and notebooks. The notebooks contain the detailed data preparation, methodology, modeling, and evaluation workflow.</p>
+<p>
+<a class="btn" href="https://github.com/Ramy99999999/Flyrank-machine-learning-internship">GitHub repository</a>
+<a class="btn" href="https://github.com/Ramy99999999/Flyrank-machine-learning-internship/blob/main/work/notebooks/capstone.ipynb">Capstone notebook</a>
+<a class="btn" href="https://github.com/Ramy99999999/Flyrank-machine-learning-internship/blob/main/work/notebooks/w05_model.ipynb">Modeling notebook (w05_model)</a>
+</p>
+</section>
+
+<section id="acknowledgments" aria-labelledby="h-ack">
+<h2 id="h-ack"><span class="n">9</span>Acknowledgments &amp; Data Credit</h2>
+<p class="prose"><strong>Built on the <a href="https://flyrank.ai">FlyRank ML Internship dataset</a></strong>. Thanks to the FlyRank internship program for the pseudonymized warehouse release. No private client data is shown on this page.</p>
+</section>
+
+</main>
+<footer>FlyRank ML Internship — Capstone · Decision-support research; not a causal or algorithmic claim.</footer>
+</body>
+</html>
